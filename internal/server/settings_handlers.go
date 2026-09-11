@@ -88,12 +88,6 @@ type purgeHistoryRequest struct {
 	OlderThanDays *int `json:"olderThanDays"`
 }
 
-type purgeHistoryResponse struct {
-	SpeedTests int64 `json:"speedTests"`
-	PacketLoss int64 `json:"packetLoss"`
-	DNS        int64 `json:"dns"`
-}
-
 func (s *Server) handlePurgeHistory(c *gin.Context) {
 	var req purgeHistoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.OlderThanDays == nil {
@@ -110,14 +104,14 @@ func (s *Server) handlePurgeHistory(c *gin.Context) {
 	// missing or null) is rejected above so a malformed body can't purge all.
 	before := time.Now().AddDate(0, 0, -*req.OlderThanDays)
 
-	speedTests, packetLoss, dnsResults, err := s.db.PurgeHistoricalData(c.Request.Context(), before)
+	counts, err := s.db.PurgeHistoricalData(c.Request.Context(), before)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to purge historical data")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to purge historical data"})
 		return
 	}
 
-	c.JSON(http.StatusOK, purgeHistoryResponse{SpeedTests: speedTests, PacketLoss: packetLoss, DNS: dnsResults})
+	c.JSON(http.StatusOK, counts)
 }
 
 func isAllowedDashboardRecentRows(rows int) bool {

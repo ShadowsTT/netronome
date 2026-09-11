@@ -33,6 +33,7 @@ import (
 	"github.com/autobrr/netronome/internal/services/license"
 	"github.com/autobrr/netronome/internal/speedtest"
 	"github.com/autobrr/netronome/internal/update"
+	"github.com/autobrr/netronome/internal/uptimemonitor"
 	appversion "github.com/autobrr/netronome/internal/version"
 )
 
@@ -292,18 +293,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	// DNS monitors need no configuration, the schedule lives per monitor
 	dnsService := dnsmonitor.NewService(db, notifier)
+	uptimeService := uptimemonitor.NewService(db, notifier)
 
 	// Now create scheduler with packet loss service
-	schedulerSvc := scheduler.New(db, speedtestSvc, packetLossService, dnsService, notifier)
+	schedulerSvc := scheduler.New(db, speedtestSvc, packetLossService, dnsService, uptimeService, notifier)
 
 	// create server handler with packet loss service and monitor service
-	serverHandler := server.NewServer(speedtestSvc, db, schedulerSvc, cfg, packetLossService, dnsService, monitorService, notifier, licenseService)
+	serverHandler := server.NewServer(speedtestSvc, db, schedulerSvc, cfg, packetLossService, dnsService, uptimeService, monitorService, notifier, licenseService)
 	updateChecker := update.New(cfg.CheckForUpdates, appversion.Version, nil)
 	serverHandler.SetUpdateChecker(updateChecker)
 
 	speedtestSvc.SetBroadcastUpdate(serverHandler.BroadcastUpdate)
 	speedtestSvc.SetBroadcastTracerouteUpdate(serverHandler.BroadcastTracerouteUpdate)
 	dnsService.SetBroadcast(serverHandler.BroadcastDNSUpdate)
+	uptimeService.SetBroadcast(serverHandler.BroadcastUptimeUpdate)
 
 	// Set the broadcaster for packet loss service
 	if packetLossService != nil {

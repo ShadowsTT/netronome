@@ -185,6 +185,8 @@ var testTablesToClear = []string{
 	"packet_loss_monitors",
 	"dns_results",
 	"dns_monitors",
+	"uptime_results",
+	"uptime_monitors",
 	"monitor_historical_snapshots",
 	"monitor_resource_stats",
 	"monitor_peak_stats",
@@ -247,7 +249,6 @@ func resetSequences(t *testing.T, db *sql.DB) {
 		}
 	}
 }
-
 
 // TestDatabase provides a test database instance
 type TestDatabase struct {
@@ -451,6 +452,30 @@ func CreateTestDNSMonitor(t *testing.T, td *TestDatabase) *types.DNSMonitor {
 	}
 
 	result, err := td.Service.CreateDNSMonitor(monitor)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Greater(t, result.ID, int64(0))
+
+	return result
+}
+
+// CreateTestUptimeMonitor creates a test uptime monitor
+func CreateTestUptimeMonitor(t *testing.T, td *TestDatabase) *types.UptimeMonitor {
+	t.Helper()
+
+	monitor := &types.UptimeMonitor{
+		Name:           "Test Uptime Monitor",
+		Type:           types.UptimeTypeHTTP,
+		Target:         "http://127.0.0.1:9/",
+		Interval:       "60s",
+		TimeoutSeconds: 10,
+		Method:         "GET",
+		ExpectedStatus: "2xx",
+		VerifyTLS:      true,
+		Enabled:        true,
+	}
+
+	result, err := td.Service.CreateUptimeMonitor(monitor)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Greater(t, result.ID, int64(0))

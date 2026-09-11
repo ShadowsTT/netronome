@@ -11,6 +11,7 @@ export interface SpeedTestOptions {
   useLibrespeed?: boolean;
   serverHost?: string;
   serverName?: string;
+  isPublicServer?: boolean;
 }
 
 export interface SpeedTest {

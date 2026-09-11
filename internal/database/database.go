@@ -106,6 +106,18 @@ type Service interface {
 	GetLatestDNSResult(monitorID int64) (*types.DNSResult, error)
 	GetDNSResults(monitorID int64, page int, limit int) (*types.PaginatedDNSResults, error)
 
+	// Uptime monitor operations
+	CreateUptimeMonitor(monitor *types.UptimeMonitor) (*types.UptimeMonitor, error)
+	GetUptimeMonitor(monitorID int64) (*types.UptimeMonitor, error)
+	GetUptimeMonitors() ([]*types.UptimeMonitor, error)
+	UpdateUptimeMonitor(monitor *types.UptimeMonitor) error
+	UpdateUptimeMonitorSchedule(monitorID int64, lastRun *time.Time, nextRun time.Time) error
+	UpdateUptimeMonitorState(monitorID int64, state string) error
+	DeleteUptimeMonitor(monitorID int64) error
+	SaveUptimeResult(result *types.UptimeResult) error
+	GetLatestUptimeResult(monitorID int64) (*types.UptimeResult, error)
+	GetUptimeResults(monitorID int64, page int, limit int) (*types.PaginatedUptimeResults, error)
+
 	// Monitor operations
 	CreateMonitorAgent(ctx context.Context, agent *types.MonitorAgent) (*types.MonitorAgent, error)
 	GetMonitorAgent(ctx context.Context, agentID int64) (*types.MonitorAgent, error)
@@ -130,7 +142,7 @@ type Service interface {
 	GetMonitorLatestSnapshot(ctx context.Context, agentID int64, periodType string) (*types.MonitorHistoricalSnapshot, error)
 
 	CleanupMonitorData(ctx context.Context) error
-	PurgeHistoricalData(ctx context.Context, before time.Time) (speedTests int64, packetLoss int64, dnsResults int64, err error)
+	PurgeHistoricalData(ctx context.Context, before time.Time) (PurgeCounts, error)
 
 	// Embed NotificationService interface
 	NotificationService

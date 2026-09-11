@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/netronome/internal/notifications"
 	"github.com/autobrr/netronome/internal/speedtest"
 	"github.com/autobrr/netronome/internal/types"
+	"github.com/autobrr/netronome/internal/uptimemonitor"
 )
 
 type Service interface {
@@ -33,6 +34,7 @@ type service struct {
 	speedtest  speedtest.Service
 	packetLoss *speedtest.PacketLossService
 	dns        *dnsmonitor.Service
+	uptime     *uptimemonitor.Service
 	notifier   *notifications.Notifier
 	ticker     *time.Ticker
 	done       chan bool
@@ -40,12 +42,13 @@ type service struct {
 	running    bool
 }
 
-func New(db database.Service, speedtest speedtest.Service, packetLoss *speedtest.PacketLossService, dns *dnsmonitor.Service, notifier *notifications.Notifier) Service {
+func New(db database.Service, speedtest speedtest.Service, packetLoss *speedtest.PacketLossService, dns *dnsmonitor.Service, uptime *uptimemonitor.Service, notifier *notifications.Notifier) Service {
 	return &service{
 		db:         db,
 		speedtest:  speedtest,
 		packetLoss: packetLoss,
 		dns:        dns,
+		uptime:     uptime,
 		notifier:   notifier,
 		done:       make(chan bool),
 	}
@@ -66,6 +69,7 @@ func (s *service) Start(ctx context.Context) {
 	s.initializeSchedules(ctx)
 	s.initializePacketLossMonitors(ctx)
 	s.initializeDNSMonitors()
+	s.initializeUptimeMonitors()
 
 	go func() {
 		for {
@@ -79,6 +83,7 @@ func (s *service) Start(ctx context.Context) {
 				s.checkAndRunScheduledTests(ctx)
 				s.checkAndRunPacketLossMonitors(ctx)
 				s.checkAndRunDNSMonitors()
+				s.checkAndRunUptimeMonitors()
 			}
 		}
 	}()
@@ -683,6 +688,85 @@ func (s *service) checkAndRunDNSMonitors() {
 			// survives
 			if err := s.db.UpdateDNSMonitorSchedule(monitor.ID, &scheduledStart, nextRun); err != nil {
 				log.Error().Err(err).Int64("monitor_id", monitor.ID).Msg("Error updating dns monitor schedule")
+			}
+		}(monitor, scheduledStart)
+	}
+}
+
+// initializeUptimeMonitors gives every enabled uptime monitor a next run time
+// on startup. Missed runs are not executed, as with the other schedules.
+func (s *service) initializeUptimeMonitors() {
+	if s.uptime == nil {
+		return
+	}
+
+	monitors, err := s.db.GetUptimeMonitors()
+	if err != nil {
+		log.Error().Err(err).Msg("Error fetching uptime monitors during initialization")
+		return
+	}
+
+	now := time.Now().UTC()
+	for _, monitor := range monitors {
+		if !monitor.Enabled || (monitor.NextRun != nil && monitor.NextRun.After(now)) {
+			continue
+		}
+
+		nextRun := s.calculateNextRun(monitor.Interval, now, true)
+		if nextRun.IsZero() {
+			log.Error().
+				Int64("monitor_id", monitor.ID).
+				Str("interval", monitor.Interval).
+				Msg("Could not calculate next run time for uptime monitor")
+			continue
+		}
+
+		if err := s.db.UpdateUptimeMonitorSchedule(monitor.ID, monitor.LastRun, nextRun); err != nil {
+			log.Error().Err(err).Int64("monitor_id", monitor.ID).Msg("Error updating uptime monitor during initialization")
+		}
+	}
+}
+
+// checkAndRunUptimeMonitors runs every enabled uptime monitor that is due
+func (s *service) checkAndRunUptimeMonitors() {
+	if s.uptime == nil {
+		return
+	}
+
+	monitors, err := s.db.GetUptimeMonitors()
+	if err != nil {
+		log.Error().Err(err).Msg("Error fetching uptime monitors")
+		return
+	}
+
+	now := time.Now().UTC()
+	for _, monitor := range monitors {
+		if !monitor.Enabled || monitor.NextRun == nil || monitor.NextRun.UTC().After(now) {
+			continue
+		}
+
+		scheduledStart := monitor.NextRun.UTC()
+		go func(monitor *types.UptimeMonitor, scheduledStart time.Time) {
+			s.uptime.RunCheck(monitor)
+
+			// keep the interval steady by counting from the scheduled start,
+			// unless the check ran past the next slot
+			nextRun := s.calculateNextRun(monitor.Interval, scheduledStart, true)
+			if nextRun.IsZero() {
+				log.Error().
+					Int64("monitor_id", monitor.ID).
+					Str("interval", monitor.Interval).
+					Msg("Error calculating next run time for uptime monitor")
+				return
+			}
+			if completed := time.Now().UTC(); nextRun.Before(completed) {
+				nextRun = s.calculateNextRun(monitor.Interval, completed, true)
+			}
+
+			// only the run times, so a user edit made while the check ran
+			// survives
+			if err := s.db.UpdateUptimeMonitorSchedule(monitor.ID, &scheduledStart, nextRun); err != nil {
+				log.Error().Err(err).Int64("monitor_id", monitor.ID).Msg("Error updating uptime monitor schedule")
 			}
 		}(monitor, scheduledStart)
 	}

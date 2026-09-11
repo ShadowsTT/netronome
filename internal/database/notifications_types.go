@@ -73,6 +73,7 @@ const (
 	NotificationCategoryPacketLoss = "packetloss"
 	NotificationCategoryAgent      = "agent"
 	NotificationCategoryDNS        = "dns"
+	NotificationCategoryUptime     = "uptime"
 )
 
 // NotificationEventType constants
@@ -92,6 +93,10 @@ const (
 	// DNS monitor events
 	NotificationEventDNSDown      = "monitor_down"
 	NotificationEventDNSRecovered = "monitor_recovered"
+
+	// Uptime monitor events
+	NotificationEventUptimeDown      = "monitor_down"
+	NotificationEventUptimeRecovered = "monitor_recovered"
 
 	// Agent events
 	NotificationEventAgentOffline       = "offline"
