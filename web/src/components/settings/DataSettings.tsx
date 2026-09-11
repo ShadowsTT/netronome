@@ -40,8 +40,9 @@ export const DataSettings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["history-chart"] });
       queryClient.invalidateQueries({ queryKey: ["packetloss"] });
       queryClient.invalidateQueries({ queryKey: ["dns"] });
+      queryClient.invalidateQueries({ queryKey: ["uptime"] });
       showToast("History purged", "success", {
-        description: `Deleted ${result.speedTests} speedtests, ${result.packetLoss} packet loss records and ${result.dns} DNS results`,
+        description: `Deleted ${result.speedTests} speedtests, ${result.packetLoss} packet loss records, ${result.dns} DNS results and ${result.uptime} uptime results`,
       });
     },
     onError: (err: unknown) => {
