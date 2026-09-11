@@ -264,3 +264,53 @@ export interface DNSUpdate {
   state?: string;
   error?: string;
 }
+
+export type UptimeType = "http" | "tcp";
+
+// The target is a URL for http and host:port for tcp. The http-only fields
+// (method, expectedStatus, keyword, verifyTls) are kept but ignored for tcp.
+export interface UptimeMonitorInput {
+  name: string;
+  type: UptimeType;
+  target: string;
+  interval: string;
+  timeoutSeconds: number;
+  method: string;
+  expectedStatus: string;
+  keyword: string;
+  verifyTls: boolean;
+  enabled: boolean;
+}
+
+export interface UptimeMonitor extends UptimeMonitorInput {
+  id: number;
+  lastRun?: string | null;
+  nextRun?: string | null;
+  lastState?: string;
+  lastStateChange?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UptimeResult {
+  id: number;
+  monitorId: number;
+  responseTimeMs: number;
+  statusCode?: number;
+  certExpiry?: string;
+  success: boolean;
+  error?: string;
+  createdAt: string;
+}
+
+// UptimeUpdate is the last known result of a monitor. State is "unknown" until
+// the first check, then "ok", "down", or "recovered".
+export interface UptimeUpdate {
+  monitorId: number;
+  success: boolean;
+  responseTimeMs?: number;
+  statusCode?: number;
+  certExpiry?: string;
+  state?: string;
+  error?: string;
+}

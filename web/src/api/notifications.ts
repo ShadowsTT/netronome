@@ -282,6 +282,8 @@ export const getEventCategoryIcon = (category: string): string => {
       return "📉";
     case "dns":
       return "🌐";
+    case "uptime":
+      return "💓";
     case "agent":
       return "🖥️";
     default:

@@ -15,6 +15,7 @@ import { SpeedTestTab } from "./speedtest/SpeedTestTab";
 import { TracerouteTab } from "./speedtest/TracerouteTab";
 import { MonitorTab } from "./monitor/MonitorTab";
 import { DNSTab } from "./dns/DNSTab";
+import { UptimeTab } from "./uptime/UptimeTab";
 import { showToast } from "@/components/common/Toast";
 import { getPublicTheme } from "@/api/license";
 import { applyPublicColorTheme } from "@/utils/colorTheme";
@@ -24,6 +25,7 @@ import {
   GlobeAltIcon,
   ServerIcon,
   ServerStackIcon,
+  HeartIcon,
 } from "@heroicons/react/24/outline";
 import {
   Server,
@@ -129,6 +131,11 @@ export default function Main({ isPublic = false }: MainProps) {
       id: "dns",
       label: "DNS",
       icon: <ServerStackIcon className="w-5 h-5" />,
+    },
+    {
+      id: "uptime",
+      label: "Uptime",
+      icon: <HeartIcon className="w-5 h-5" />,
     },
     {
       id: "monitor",
@@ -627,6 +634,18 @@ export default function Main({ isPublic = false }: MainProps) {
               transition={{ duration: 0.3 }}
             >
               <DNSTab />
+            </motion.div>
+          )}
+
+          {!isPublic && activeTab === "uptime" && (
+            <motion.div
+              key="uptime"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <UptimeTab />
             </motion.div>
           )}
 
