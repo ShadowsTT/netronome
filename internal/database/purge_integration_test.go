@@ -47,24 +47,28 @@ func TestPurgeHistoricalData(t *testing.T) {
 		recentDNS := &types.DNSResult{MonitorID: dnsMonitor.ID, ResponseTimeMs: 14, ResponseCode: "NOERROR", Success: true, CreatedAt: recent}
 		require.NoError(t, td.Service.SaveDNSResult(recentDNS))
 
+		// uptime_results: needs a monitor (FK), one old, one recent
+		uptimeMonitor := CreateTestUptimeMonitor(t, td)
+		oldUptime := &types.UptimeResult{MonitorID: uptimeMonitor.ID, ResponseTimeMs: 30, Success: true, CreatedAt: old}
+		require.NoError(t, td.Service.SaveUptimeResult(oldUptime))
+		recentUptime := &types.UptimeResult{MonitorID: uptimeMonitor.ID, ResponseTimeMs: 31, Success: true, CreatedAt: recent}
+		require.NoError(t, td.Service.SaveUptimeResult(recentUptime))
+
 		// Purge everything older than the cutoff.
-		speedTests, packetLoss, dnsResults, err := td.Service.PurgeHistoricalData(ctx, cutoff)
+		counts, err := td.Service.PurgeHistoricalData(ctx, cutoff)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), speedTests)
-		assert.Equal(t, int64(1), packetLoss)
-		assert.Equal(t, int64(1), dnsResults)
+		assert.Equal(t, PurgeCounts{SpeedTests: 1, PacketLoss: 1, DNS: 1, Uptime: 1}, counts)
 
 		// Only the recent rows should survive.
 		AssertRecordExists(t, td, "speed_tests", "id", recentST.ID)
 		AssertRecordExists(t, td, "packet_loss_results", "id", recentPL.ID)
 		AssertRecordExists(t, td, "dns_results", "id", recentDNS.ID)
+		AssertRecordExists(t, td, "uptime_results", "id", recentUptime.ID)
 
-		var stCount, plCount, dnsCount int
-		require.NoError(t, td.DB.QueryRow("SELECT COUNT(*) FROM speed_tests").Scan(&stCount))
-		require.NoError(t, td.DB.QueryRow("SELECT COUNT(*) FROM packet_loss_results").Scan(&plCount))
-		require.NoError(t, td.DB.QueryRow("SELECT COUNT(*) FROM dns_results").Scan(&dnsCount))
-		assert.Equal(t, 1, stCount)
-		assert.Equal(t, 1, plCount)
-		assert.Equal(t, 1, dnsCount)
+		for _, table := range []string{"speed_tests", "packet_loss_results", "dns_results", "uptime_results"} {
+			var count int
+			require.NoError(t, td.DB.QueryRow("SELECT COUNT(*) FROM "+table).Scan(&count))
+			assert.Equal(t, 1, count, table)
+		}
 	})
 }

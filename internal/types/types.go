@@ -249,6 +249,70 @@ type DNSUpdate struct {
 	Error          string  `json:"error,omitempty"`
 }
 
+// Uptime monitor types.
+const (
+	UptimeTypeHTTP = "http"
+	UptimeTypeTCP  = "tcp"
+)
+
+// UptimeMonitor is a target, an interval, and a type. For http the server
+// requests the URL and checks the status code (and a keyword in the body if
+// set); for tcp it opens a connection to host:port. It measures reachability,
+// not content.
+type UptimeMonitor struct {
+	ID              int64      `db:"id" json:"id"`
+	Name            string     `db:"name" json:"name"`
+	Type            string     `db:"type" json:"type"`
+	Target          string     `db:"target" json:"target"`
+	Interval        string     `db:"interval" json:"interval"`
+	TimeoutSeconds  int        `db:"timeout_seconds" json:"timeoutSeconds"`
+	Method          string     `db:"method" json:"method"`
+	ExpectedStatus  string     `db:"expected_status" json:"expectedStatus"`
+	Keyword         string     `db:"keyword" json:"keyword"`
+	VerifyTLS       bool       `db:"verify_tls" json:"verifyTls"`
+	Enabled         bool       `db:"enabled" json:"enabled"`
+	LastRun         *time.Time `db:"last_run" json:"lastRun"`
+	NextRun         *time.Time `db:"next_run" json:"nextRun"`
+	LastState       string     `db:"last_state" json:"lastState"`
+	LastStateChange *time.Time `db:"last_state_change" json:"lastStateChange"`
+	CreatedAt       time.Time  `db:"created_at" json:"createdAt"`
+	UpdatedAt       time.Time  `db:"updated_at" json:"updatedAt"`
+}
+
+// UptimeResult is one recorded uptime check.
+type UptimeResult struct {
+	ID             int64      `db:"id" json:"id"`
+	MonitorID      int64      `db:"monitor_id" json:"monitorId"`
+	ResponseTimeMs float64    `db:"response_time_ms" json:"responseTimeMs"`
+	StatusCode     *int       `db:"status_code" json:"statusCode,omitempty"`
+	CertExpiry     *time.Time `db:"cert_expiry" json:"certExpiry,omitempty"`
+	Success        bool       `db:"success" json:"success"`
+	Error          *string    `db:"error" json:"error,omitempty"`
+	CreatedAt      time.Time  `db:"created_at" json:"createdAt"`
+}
+
+type PaginatedUptimeResults struct {
+	Data  []UptimeResult `json:"data"`
+	Total int            `json:"total"`
+	Page  int            `json:"page"`
+	Limit int            `json:"limit"`
+}
+
+// UptimeUpdate is the live status of an uptime monitor.
+type UptimeUpdate struct {
+	Type           string     `json:"type"`
+	MonitorID      int64      `json:"monitorId"`
+	Target         string     `json:"target"`
+	IsRunning      bool       `json:"isRunning"`
+	Enabled        bool       `json:"enabled"`
+	Success        bool       `json:"success"`
+	ResponseTimeMs float64    `json:"responseTimeMs,omitempty"`
+	StatusCode     int        `json:"statusCode,omitempty"`
+	CertExpiry     *time.Time `json:"certExpiry,omitempty"`
+	State          string     `json:"state,omitempty"`
+	Error          string     `json:"error,omitempty"`
+}
+
 // MonitorAgent represents a monitoring agent configuration
 type MonitorAgent struct {
 	ID                int64      `db:"id" json:"id"`

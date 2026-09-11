@@ -62,13 +62,22 @@ response code. Its states are the normal state, `down`, and `recovered`. The DNS
 monitor measures the resolver, not the record. It does not check that an answer
 is correct.
 
+**Uptime monitor** (`UptimeMonitor`) — a target, an interval, and a type. The
+`http` type requests a URL and passes on the expected status code (and a keyword
+in the body, if one is set); the `tcp` type opens a connection to `host:port`
+and passes when it connects. A check fails on a timeout, a transport or TLS
+error, a status outside the expected rule, or a missing keyword. Its states are
+the normal state, `down`, and `recovered`. The uptime monitor measures
+reachability, not content. An `https` check also records the certificate expiry
+but does not yet alert on it.
+
 ## Notifications
 
 Four tables, and the relation between them is the design:
 
 - **Channel** — a destination. One shoutrrr URL, one name, enabled or not.
 - **Event** — a thing that can happen, in a category (`speedtest`, `packetloss`,
-  `agent`) with a type (`complete`, `download_low`, `monitor_down`, `cpu_high`,
+  `dns`, `uptime`, `agent`) with a type (`complete`, `download_low`, `monitor_down`, `cpu_high`,
   and so on). The events are seeded rows. A user does not create them.
 - **Rule** — one channel joined to one event. This is where a user makes a
   decision: enabled or not, the threshold value, the threshold operator. A rule

@@ -141,6 +141,8 @@ func notificationTitle(category string) string {
 		return "Netronome: Packet Loss"
 	case database.NotificationCategoryDNS:
 		return "Netronome: DNS"
+	case database.NotificationCategoryUptime:
+		return "Netronome: Uptime"
 	default:
 		return "Netronome: " + strings.ToUpper(category[:1]) + category[1:]
 	}
@@ -332,6 +334,17 @@ func (n *Notifier) SendDNSNotification(monitorName string, host string, detail s
 
 	message := fmt.Sprintf("[OK] DNS Monitor Recovered - **%s** | Resolver: **%s** | %s", monitorName, host, detail)
 	return n.SendNotification(database.NotificationCategoryDNS, database.NotificationEventDNSRecovered, message, nil)
+}
+
+// SendUptimeNotification sends an uptime monitor down or recovered notification
+func (n *Notifier) SendUptimeNotification(monitorName string, target string, detail string, isDown bool) error {
+	if isDown {
+		message := fmt.Sprintf("[DOWN] Uptime Monitor Down - **%s** | Target: **%s** | %s", monitorName, target, detail)
+		return n.SendNotification(database.NotificationCategoryUptime, database.NotificationEventUptimeDown, message, nil)
+	}
+
+	message := fmt.Sprintf("[OK] Uptime Monitor Recovered - **%s** | Target: **%s** | %s", monitorName, target, detail)
+	return n.SendNotification(database.NotificationCategoryUptime, database.NotificationEventUptimeRecovered, message, nil)
 }
 
 // SendAgentNotification sends an agent-related notification
