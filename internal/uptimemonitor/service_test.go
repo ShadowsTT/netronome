@@ -5,9 +5,14 @@ package uptimemonitor
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
-	"math"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -247,6 +252,48 @@ func TestService_Notifies(t *testing.T) {
 	assert.Equal(t, 2, count())
 }
 
+func startCertServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(30*24*time.Hour + 12*time.Hour),
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{cert}, PrivateKey: key}}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestService_CertNotificationRetriesFailedDelivery(t *testing.T) {
+	var attempts atomic.Int32
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	t.Cleanup(webhook.Close)
+	notifier, err := notifications.NewNotifierFromURLs([]string{
+		"generic://" + strings.TrimPrefix(webhook.URL, "http://") + "?template=json&disabletls=yes",
+	})
+	require.NoError(t, err)
+	service := NewService(testDB, notifier)
+	monitor := newMonitor(t, startCertServer(t).URL, true)
+	monitor.VerifyTLS = false // the local HTTPS server uses a self-signed certificate
+
+	service.RunCheck(monitor)
+	require.Equal(t, int32(1), attempts.Load())
+	service.RunCheck(monitor)
+	require.Equal(t, int32(2), attempts.Load(), "failed delivery must release the cooldown for a retry")
+	service.RunCheck(monitor)
+	assert.Equal(t, int32(2), attempts.Load(), "successful delivery must start the normal cooldown")
+}
+
 func TestService_CertNotifications(t *testing.T) {
 	var mu sync.Mutex
 	var received []string
@@ -276,9 +323,8 @@ func TestService_CertNotifications(t *testing.T) {
 	event, err := testDB.GetEventByType(database.NotificationCategoryUptime, "cert_expiring")
 	require.NoError(t, err)
 
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	t.Cleanup(server.Close)
-	daysLeft := math.Floor(time.Until(server.Certificate().NotAfter).Hours() / 24)
+	server := startCertServer(t)
+	daysLeft := float64(30)
 	enabled, operator := true, "eq"
 	rule, err := testDB.CreateRule(database.NotificationRuleInput{
 		ChannelID: channel.ID, EventID: event.ID, Enabled: &enabled,

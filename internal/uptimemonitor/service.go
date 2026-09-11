@@ -137,6 +137,11 @@ func (s *Service) sendCertNotification(monitor *types.UptimeMonitor, check Check
 	}
 	daysLeft := math.Floor(time.Until(*check.CertExpiry).Hours() / 24)
 	if err := s.notifier.SendUptimeCertNotification(name, monitor.Target, daysLeft); err != nil {
+		s.mu.Lock()
+		if s.lastCertNotification[monitor.ID] == now {
+			delete(s.lastCertNotification, monitor.ID)
+		}
+		s.mu.Unlock()
 		log.Error().Err(err).Int64("monitorID", monitor.ID).Msg("Failed to send uptime certificate notification")
 	}
 }
