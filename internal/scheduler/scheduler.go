@@ -33,25 +33,31 @@ type service struct {
 	db         database.Service
 	speedtest  speedtest.Service
 	packetLoss *speedtest.PacketLossService
-	dns        *dnsmonitor.Service
-	uptime     *uptimemonitor.Service
+	dns        interface{ RunCheck(*types.DNSMonitor) }
+	uptime     interface{ RunCheck(*types.UptimeMonitor) }
 	notifier   *notifications.Notifier
 	ticker     *time.Ticker
 	done       chan bool
 	mu         sync.Mutex
 	running    bool
+	inFlight   sync.Map
 }
 
 func New(db database.Service, speedtest speedtest.Service, packetLoss *speedtest.PacketLossService, dns *dnsmonitor.Service, uptime *uptimemonitor.Service, notifier *notifications.Notifier) Service {
-	return &service{
+	s := &service{
 		db:         db,
 		speedtest:  speedtest,
 		packetLoss: packetLoss,
-		dns:        dns,
-		uptime:     uptime,
 		notifier:   notifier,
 		done:       make(chan bool),
 	}
+	if dns != nil {
+		s.dns = dns
+	}
+	if uptime != nil {
+		s.uptime = uptime
+	}
+	return s
 }
 
 func (s *service) Start(ctx context.Context) {
@@ -666,8 +672,15 @@ func (s *service) checkAndRunDNSMonitors() {
 			continue
 		}
 
+		key := "dns:" + strconv.FormatInt(monitor.ID, 10)
+		if _, loaded := s.inFlight.LoadOrStore(key, struct{}{}); loaded {
+			log.Debug().Int64("monitor_id", monitor.ID).Msg("DNS monitor check already in flight, skipping")
+			continue
+		}
+
 		scheduledStart := monitor.NextRun.UTC()
 		go func(monitor *types.DNSMonitor, scheduledStart time.Time) {
+			defer s.inFlight.Delete(key)
 			s.dns.RunCheck(monitor)
 
 			// keep the interval steady by counting from the scheduled start,
@@ -745,8 +758,15 @@ func (s *service) checkAndRunUptimeMonitors() {
 			continue
 		}
 
+		key := "uptime:" + strconv.FormatInt(monitor.ID, 10)
+		if _, loaded := s.inFlight.LoadOrStore(key, struct{}{}); loaded {
+			log.Debug().Int64("monitor_id", monitor.ID).Msg("Uptime monitor check already in flight, skipping")
+			continue
+		}
+
 		scheduledStart := monitor.NextRun.UTC()
 		go func(monitor *types.UptimeMonitor, scheduledStart time.Time) {
+			defer s.inFlight.Delete(key)
 			s.uptime.RunCheck(monitor)
 
 			// keep the interval steady by counting from the scheduled start,
