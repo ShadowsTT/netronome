@@ -5,6 +5,7 @@ package uptimemonitor
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -29,10 +30,12 @@ type Service struct {
 	notifier  *notifications.Notifier
 	mu        sync.RWMutex
 	broadcast func(types.UptimeUpdate)
+	// ponytail: in-memory cooldown, resets on restart
+	lastCertNotification map[int64]time.Time
 }
 
 func NewService(db database.Service, notifier *notifications.Notifier) *Service {
-	return &Service{db: db, notifier: notifier}
+	return &Service{db: db, notifier: notifier, lastCertNotification: make(map[int64]time.Time)}
 }
 
 // SetBroadcast sets the broadcast function for the service
@@ -95,6 +98,7 @@ func (s *Service) RunCheck(monitor *types.UptimeMonitor) {
 	}
 
 	state := s.applyState(monitor, check)
+	s.sendCertNotification(monitor, check)
 
 	update := types.UptimeUpdate{
 		Type:           "uptime",
@@ -111,6 +115,30 @@ func (s *Service) RunCheck(monitor *types.UptimeMonitor) {
 		update.Error = *result.Error
 	}
 	s.send(update)
+}
+
+func (s *Service) sendCertNotification(monitor *types.UptimeMonitor, check Check) {
+	if !check.Success || check.CertExpiry == nil || s.notifier == nil {
+		return
+	}
+
+	now := time.Now()
+	s.mu.Lock()
+	if now.Sub(s.lastCertNotification[monitor.ID]) < 24*time.Hour {
+		s.mu.Unlock()
+		return
+	}
+	s.lastCertNotification[monitor.ID] = now
+	s.mu.Unlock()
+
+	name := monitor.Name
+	if name == "" {
+		name = monitor.Target
+	}
+	daysLeft := math.Floor(time.Until(*check.CertExpiry).Hours() / 24)
+	if err := s.notifier.SendUptimeCertNotification(name, monitor.Target, daysLeft); err != nil {
+		log.Error().Err(err).Int64("monitorID", monitor.ID).Msg("Failed to send uptime certificate notification")
+	}
 }
 
 // applyState moves the monitor to its new state and notifies on a change. It

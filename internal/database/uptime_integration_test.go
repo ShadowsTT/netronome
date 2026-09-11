@@ -10,8 +10,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/netronome/internal/config"
 	"github.com/autobrr/netronome/internal/types"
 )
+
+func TestUptimeCertExpiringEvent(t *testing.T) {
+	td := SetupTestDatabase(t, config.SQLite)
+	t.Cleanup(func() { require.NoError(t, td.Close()) })
+
+	events, err := td.Service.GetEvents()
+	require.NoError(t, err)
+	for _, event := range events {
+		if event.Category == NotificationCategoryUptime && event.EventType == "cert_expiring" {
+			assert.Equal(t, "Certificate Expiring", event.Name)
+			assert.True(t, event.SupportsThreshold)
+			require.NotNil(t, event.ThresholdUnit)
+			assert.Equal(t, "days", *event.ThresholdUnit)
+			return
+		}
+	}
+	t.Fatal("migration did not seed uptime/cert_expiring")
+}
 
 func TestUptimeMonitor_CRUD(t *testing.T) {
 	RunTestWithBothDatabases(t, func(t *testing.T, td *TestDatabase) {
