@@ -13,18 +13,18 @@ import (
 
 func TestTailscaleConfig_AutoDetection(t *testing.T) {
 	tests := []struct {
-		name            string
-		config          TailscaleConfig
-		expectedMethod  string
-		expectError     bool
-		errorContains   string
+		name           string
+		config         TailscaleConfig
+		expectedMethod string
+		expectError    bool
+		errorContains  string
 	}{
 		{
 			name: "auto mode with auth key uses tsnet",
 			config: TailscaleConfig{
-				Enabled:  true,
-				Method:   "auto",
-				AuthKey:  "tskey-auth-test",
+				Enabled: true,
+				Method:  "auto",
+				AuthKey: "tskey-auth-test",
 			},
 			expectedMethod: "tsnet",
 		},
@@ -79,7 +79,7 @@ func TestTailscaleConfig_AutoDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			method, err := tt.config.GetEffectiveMethod()
-			
+
 			if tt.expectError {
 				require.Error(t, err, "expected error but got none")
 				if tt.errorContains != "" {
@@ -170,7 +170,7 @@ func TestTailscaleConfig_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			
+
 			if tt.expectError {
 				require.Error(t, err, "expected error but got none")
 				if tt.errorContains != "" {
@@ -203,23 +203,23 @@ func TestTailscaleConfig_EnvironmentOverrides(t *testing.T) {
 		{
 			name: "env overrides all settings",
 			envVars: map[string]string{
-				"NETRONOME__TAILSCALE_ENABLED":             "true",
-				"NETRONOME__TAILSCALE_METHOD":              "tsnet",
-				"NETRONOME__TAILSCALE_AUTH_KEY":            "tskey-env-test",
-				"NETRONOME__TAILSCALE_HOSTNAME":            "env-hostname",
-				"NETRONOME__TAILSCALE_EPHEMERAL":           "true",
-				"NETRONOME__TAILSCALE_STATE_DIR":           "/custom/state",
-				"NETRONOME__TAILSCALE_CONTROL_URL":         "https://headscale.example.com",
-				"NETRONOME__TAILSCALE_AGENT_PORT":          "8300",
-				"NETRONOME__TAILSCALE_AUTO_DISCOVER":       "false",
-				"NETRONOME__TAILSCALE_DISCOVERY_INTERVAL":  "10m",
-				"NETRONOME__TAILSCALE_DISCOVERY_PORT":      "8400",
-				"NETRONOME__TAILSCALE_DISCOVERY_PREFIX":    "prod-",
+				"NETRONOME__TAILSCALE_ENABLED":            "true",
+				"NETRONOME__TAILSCALE_METHOD":             "tsnet",
+				"NETRONOME__TAILSCALE_AUTH_KEY":           "tskey-env-test",
+				"NETRONOME__TAILSCALE_HOSTNAME":           "env-hostname",
+				"NETRONOME__TAILSCALE_EPHEMERAL":          "true",
+				"NETRONOME__TAILSCALE_STATE_DIR":          "/custom/state",
+				"NETRONOME__TAILSCALE_CONTROL_URL":        "https://headscale.example.com",
+				"NETRONOME__TAILSCALE_AGENT_PORT":         "8300",
+				"NETRONOME__TAILSCALE_AUTO_DISCOVER":      "false",
+				"NETRONOME__TAILSCALE_DISCOVERY_INTERVAL": "10m",
+				"NETRONOME__TAILSCALE_DISCOVERY_PORT":     "8400",
+				"NETRONOME__TAILSCALE_DISCOVERY_PREFIX":   "prod-",
 			},
 			initial: TailscaleConfig{
-				Enabled:  false,
-				Method:   "host",
-				AuthKey:  "original-key",
+				Enabled: false,
+				Method:  "host",
+				AuthKey: "original-key",
 			},
 			expected: TailscaleConfig{
 				Enabled:           true,
@@ -263,16 +263,16 @@ func TestTailscaleConfig_EnvironmentOverrides(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear env
 			os.Clearenv()
-			
+
 			// Set test env vars
 			for k, v := range tt.envVars {
 				os.Setenv(k, v)
 			}
-			
+
 			// Apply env overrides
 			cfg := tt.initial
 			cfg.loadFromEnv()
-			
+
 			// Compare
 			assert.Equal(t, tt.expected.Enabled, cfg.Enabled, "Enabled field mismatch")
 			assert.Equal(t, tt.expected.Method, cfg.Method, "Method field mismatch")
@@ -337,8 +337,8 @@ func TestTailscaleConfig_BackwardCompatibility(t *testing.T) {
 						Port:    8300,
 					},
 					Monitor: TailscaleMonitorConfig{
-						AutoDiscover:      false,
-						DiscoveryPrefix:   "netronome-agent-",
+						AutoDiscover:    false,
+						DiscoveryPrefix: "netronome-agent-",
 					},
 				},
 			},
@@ -377,7 +377,7 @@ func TestTailscaleConfig_BackwardCompatibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			migrated := tt.oldStyle.Tailscale.MigrateFromOldFormat()
-			
+
 			assert.Equal(t, tt.expected.Enabled, migrated.Enabled, "Enabled field mismatch")
 			assert.Equal(t, tt.expected.Method, migrated.Method, "Method field mismatch")
 			assert.Equal(t, tt.expected.AuthKey, migrated.AuthKey, "AuthKey field mismatch")

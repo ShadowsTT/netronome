@@ -23,4 +23,3 @@ func (p *DefaultProgressBroadcaster) BroadcastUpdate(update types.SpeedUpdate) {
 		p.broadcaster.BroadcastUpdate(update)
 	}
 }
-

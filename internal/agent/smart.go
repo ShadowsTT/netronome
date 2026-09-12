@@ -52,7 +52,7 @@ func (a *Agent) getDiskInfo(devicePath string) (model string, serial string) {
 			serial = strings.TrimSpace(string(ctrl.SerialNumberRaw[:]))
 		}
 	}
-	
+
 	return model, serial
 }
 
@@ -62,17 +62,17 @@ func (a *Agent) getHDDTemperatures() []TemperatureStats {
 
 	// Get device paths based on platform
 	devicePaths := a.getDevicePaths()
-	
+
 	for _, devicePath := range devicePaths {
 		name := filepath.Base(devicePath)
-		
+
 		// Try to open the device with SMART
 		dev, err := smart.Open(devicePath)
 		if err != nil {
 			log.Trace().Str("device", devicePath).Err(err).Msg("Failed to open device for SMART (may need root or unsupported on this platform)")
 			continue
 		}
-		
+
 		// Get temperature using the generic attributes API
 		attrs, err := dev.ReadGenericAttributes()
 		if err != nil {
@@ -80,12 +80,12 @@ func (a *Agent) getHDDTemperatures() []TemperatureStats {
 			log.Trace().Str("device", devicePath).Err(err).Msg("Failed to read generic attributes")
 			continue
 		}
-		
+
 		// Check if we got a valid temperature
 		if attrs != nil && attrs.Temperature > 0 && attrs.Temperature < 100 {
 			deviceType := "HDD"
 			modelName := ""
-			
+
 			// Try to get model information
 			switch d := dev.(type) {
 			case *smart.SataDevice:
@@ -103,13 +103,13 @@ func (a *Agent) getHDDTemperatures() []TemperatureStats {
 					modelName = strings.TrimSpace(string(ctrl.ModelNumberRaw[:]))
 				}
 			}
-			
+
 			label := fmt.Sprintf("%s %s", deviceType, strings.ToUpper(name))
 			if modelName != "" {
 				// Include both model name and device identifier
 				label = fmt.Sprintf("%s (%s)", modelName, strings.ToUpper(name))
 			}
-			
+
 			temps = append(temps, TemperatureStats{
 				SensorKey:   fmt.Sprintf("smart_%s", name),
 				Temperature: float64(attrs.Temperature),
@@ -124,7 +124,7 @@ func (a *Agent) getHDDTemperatures() []TemperatureStats {
 				Str("model", modelName).
 				Msg("Added disk temperature from SMART")
 		}
-		
+
 		dev.Close()
 	}
 

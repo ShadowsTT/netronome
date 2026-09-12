@@ -74,7 +74,7 @@ func TestProcessCleanupMechanism(t *testing.T) {
 	// Use a simple long-running command that doesn't require privileges
 	var cmdName string
 	var args []string
-	
+
 	switch runtime.GOOS {
 	case "windows":
 		cmdName = "ping"
@@ -122,7 +122,7 @@ func TestProcessCleanupMechanism(t *testing.T) {
 
 	// Verify process is gone
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Try to find the process
 	if runtime.GOOS != "windows" {
 		// On Unix, check if process exists
@@ -148,7 +148,7 @@ func checkForZombies() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	outputStr := string(output)
 	return containsZombieMTR(outputStr)
 }
@@ -158,8 +158,8 @@ func containsZombieMTR(psOutput string) bool {
 	lines := splitLines(psOutput)
 	for _, line := range lines {
 		// Check for mtr process that is a zombie (defunct or Z state)
-		if containsString(line, "mtr") && 
-		   (containsString(line, "<defunct>") || containsString(line, " Z ")) {
+		if containsString(line, "mtr") &&
+			(containsString(line, "<defunct>") || containsString(line, " Z ")) {
 			return true
 		}
 	}
@@ -201,7 +201,7 @@ func isNoSuchProcessError(err error) bool {
 		return false
 	}
 	errStr := err.Error()
-	return containsString(errStr, "no such process") || 
-	       containsString(errStr, "process already finished") ||
-	       containsString(errStr, "The process cannot be found")
+	return containsString(errStr, "no such process") ||
+		containsString(errStr, "process already finished") ||
+		containsString(errStr, "The process cannot be found")
 }

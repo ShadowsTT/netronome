@@ -178,7 +178,7 @@ func (h *MonitorHandler) UpdateAgent(c *gin.Context) {
 	agent.TailscaleHostname = existingAgent.TailscaleHostname
 	agent.DiscoveredAt = existingAgent.DiscoveredAt
 	agent.Interface = existingAgent.Interface
-	
+
 	// Handle IsTailscale field: preserve if auto-discovered, otherwise auto-detect
 	if existingAgent.DiscoveredAt != nil {
 		// This was auto-discovered, preserve the Tailscale flag

@@ -50,15 +50,15 @@ func (t *tsnetClient) Status(ctx context.Context) (*ipnstate.Status, error) {
 func GetHostClient() (Client, error) {
 	// Try default client first (it will auto-detect socket/HTTP)
 	client := &tailscale.LocalClient{}
-	
+
 	// Test the connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if _, err := client.Status(ctx); err == nil {
 		return &hostClient{client: client}, nil
 	}
-	
+
 	return nil, fmt.Errorf("no running tailscaled found on host")
 }
 
@@ -77,11 +77,11 @@ func ListenOnTailscale(hostClient Client, port int) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Tailscale status: %w", err)
 	}
-	
+
 	if status.Self == nil || len(status.Self.TailscaleIPs) == 0 {
 		return nil, fmt.Errorf("no Tailscale IPs available")
 	}
-	
+
 	// Listen on the first Tailscale IP
 	addr := fmt.Sprintf("%s:%d", status.Self.TailscaleIPs[0], port)
 	return net.Listen("tcp", addr)
@@ -93,11 +93,11 @@ func GetSelfInfo(client Client) (hostname string, ips []string, err error) {
 	if err != nil {
 		return "", nil, err
 	}
-	
+
 	if status.Self == nil {
 		return "", nil, fmt.Errorf("no self information available")
 	}
-	
+
 	// Use the actual Tailscale machine name (DNSName without suffix)
 	hostname = status.Self.DNSName
 	// Trim the MagicDNS suffix to get just the machine name
@@ -108,10 +108,10 @@ func GetSelfInfo(client Client) (hostname string, ips []string, err error) {
 	if hostname == "" {
 		hostname = status.Self.HostName
 	}
-	
+
 	for _, ip := range status.Self.TailscaleIPs {
 		ips = append(ips, ip.String())
 	}
-	
+
 	return hostname, ips, nil
 }
