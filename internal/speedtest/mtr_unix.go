@@ -24,12 +24,12 @@ func configureMTRCommand(cmd *exec.Cmd) {
 func killMTRProcessGroup(pid int) error {
 	// Send SIGKILL to the process group (negative PID)
 	err := syscall.Kill(-pid, syscall.SIGKILL)
-	
+
 	// If the process doesn't exist, that's fine - it already exited
 	if err == syscall.ESRCH {
 		return nil
 	}
-	
+
 	// On macOS, we might get EPERM if the process already exited
 	if err == syscall.EPERM {
 		// Check if the process still exists
@@ -38,7 +38,7 @@ func killMTRProcessGroup(pid int) error {
 			return nil
 		}
 	}
-	
+
 	return err
 }
 
@@ -49,7 +49,7 @@ func buildMTRArgs(host string, packetCount int, privilegedMode bool, enableDNS b
 		"-4",                                 // Force IPv4
 		"-j",                                 // JSON output
 		"-c", fmt.Sprintf("%d", packetCount), // Number of cycles
-		"-i", "1",                            // 1 second interval
+		"-i", "1", // 1 second interval
 	}
 
 	if !enableDNS {

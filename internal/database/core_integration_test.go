@@ -81,7 +81,6 @@ func TestUserManagement(t *testing.T) {
 	})
 }
 
-
 func TestTransactionBehavior(t *testing.T) {
 	RunTestWithBothDatabases(t, func(t *testing.T, td *TestDatabase) {
 		ctx := context.Background()

@@ -70,9 +70,9 @@ func VerifyToken(signedToken, secret string) (string, error) {
 
 	if secret != "" {
 		parts := strings.Split(signedToken, ".")
-		
+
 		var token, signature string
-		
+
 		// Handle different token formats
 		if len(parts) == 2 {
 			// Regular signed token: token.signature

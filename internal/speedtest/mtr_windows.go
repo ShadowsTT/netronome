@@ -69,9 +69,9 @@ func killMTRProcessGroup(pid int) error {
 // and -w for wide format, then capture stdout and parse it
 func buildMTRArgs(host string, packetCount int, privilegedMode bool, enableDNS bool) ([]string, string, error) {
 	args := []string{
-		"-4",                                 // Force IPv4
-		"-r",                                 // Report mode
-		"-w",                                 // Wide report, don't truncate hostnames
+		"-4", // Force IPv4
+		"-r", // Report mode
+		"-w", // Wide report, don't truncate hostnames
 	}
 
 	if !enableDNS {

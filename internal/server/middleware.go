@@ -23,7 +23,7 @@ func ErrorHandlerMiddleware() gin.HandlerFunc {
 		// Handle errors after request processing
 		if len(c.Errors) > 0 {
 			err := c.Errors.Last()
-			
+
 			// Determine status code if not already set
 			status := c.Writer.Status()
 			if status == http.StatusOK {
