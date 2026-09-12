@@ -5,7 +5,14 @@ package uptimemonitor
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -242,4 +250,149 @@ func TestService_Notifies(t *testing.T) {
 
 	service.RunCheck(monitor) // recovered -> ok: quiet
 	assert.Equal(t, 2, count())
+}
+
+func startCertServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(30*24*time.Hour + 12*time.Hour),
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{cert}, PrivateKey: key}}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestService_CertNotificationRetriesFailedDelivery(t *testing.T) {
+	var attempts atomic.Int32
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	t.Cleanup(webhook.Close)
+	notifier, err := notifications.NewNotifierFromURLs([]string{
+		"generic://" + strings.TrimPrefix(webhook.URL, "http://") + "?template=json&disabletls=yes",
+	})
+	require.NoError(t, err)
+	service := NewService(testDB, notifier)
+	monitor := newMonitor(t, startCertServer(t).URL, true)
+	monitor.VerifyTLS = false // the local HTTPS server uses a self-signed certificate
+
+	service.RunCheck(monitor)
+	require.Equal(t, int32(1), attempts.Load())
+	service.RunCheck(monitor)
+	require.Equal(t, int32(2), attempts.Load(), "failed delivery must release the cooldown for a retry")
+	service.RunCheck(monitor)
+	assert.Equal(t, int32(2), attempts.Load(), "successful delivery must start the normal cooldown")
+}
+
+func TestService_CertNotifications(t *testing.T) {
+	var mu sync.Mutex
+	var received []string
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if !assert.NoError(t, err) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		received = append(received, string(body))
+		mu.Unlock()
+	}))
+	t.Cleanup(webhook.Close)
+	messages := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), received...)
+	}
+
+	channel, err := testDB.CreateChannel(database.NotificationChannelInput{
+		Name: "certificate webhook",
+		URL:  "generic://" + strings.TrimPrefix(webhook.URL, "http://") + "?template=json&disabletls=yes",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, testDB.DeleteChannel(channel.ID)) })
+	event, err := testDB.GetEventByType(database.NotificationCategoryUptime, "cert_expiring")
+	require.NoError(t, err)
+
+	server := startCertServer(t)
+	daysLeft := float64(30)
+	enabled, operator := true, "eq"
+	rule, err := testDB.CreateRule(database.NotificationRuleInput{
+		ChannelID: channel.ID, EventID: event.ID, Enabled: &enabled,
+		ThresholdValue: &daysLeft, ThresholdOperator: &operator,
+	})
+	require.NoError(t, err)
+	notifier, err := notifications.NewNotifier(testDB)
+	require.NoError(t, err)
+	service := NewService(testDB, notifier)
+	monitor := newMonitor(t, server.URL, true)
+	monitor.VerifyTLS = false // the local HTTPS server uses a self-signed certificate
+
+	service.RunCheck(monitor)
+	require.Len(t, messages(), 1)
+	assert.Contains(t, messages()[0], fmt.Sprintf("[!] Certificate Expiring - **%s** | Target: **%s** | Expires in %.0f days", monitor.Name, monitor.Target, daysLeft))
+	result, err := testDB.GetLatestUptimeResult(monitor.ID)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.NotNil(t, result.CertExpiry)
+	assert.WithinDuration(t, server.Certificate().NotAfter, *result.CertExpiry, time.Second)
+
+	service.RunCheck(monitor)
+	assert.Len(t, messages(), 1, "the same monitor must respect the cooldown")
+
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	t.Cleanup(plain.Close)
+	service.RunCheck(newMonitor(t, plain.URL, true))
+	assert.Len(t, messages(), 1, "plain HTTP has no certificate")
+
+	failed := *monitor
+	failed.ExpectedStatus = "503"
+	NewService(testDB, notifier).RunCheck(&failed)
+	assert.Len(t, messages(), 1, "a failed HTTPS check must not send a certificate alert")
+
+	// An equal value does not satisfy lt; this also catches a missing threshold value.
+	operator = "lt"
+	_, err = testDB.UpdateRule(rule.ID, database.NotificationRuleInput{ThresholdOperator: &operator})
+	require.NoError(t, err)
+	NewService(testDB, notifier).RunCheck(monitor)
+	assert.Len(t, messages(), 1, "the notifier must filter on the whole days left")
+
+	operator = "eq"
+	_, err = testDB.UpdateRule(rule.ID, database.NotificationRuleInput{ThresholdOperator: &operator})
+	require.NoError(t, err)
+	service.mu.Lock()
+	service.lastCertNotification[monitor.ID] = time.Now().Add(-24 * time.Hour)
+	service.mu.Unlock()
+	var checks sync.WaitGroup
+	for range 4 {
+		checks.Go(func() {
+			copy := *monitor
+			service.RunCheck(&copy)
+		})
+	}
+	checks.Wait()
+	assert.Len(t, messages(), 2, "after 24 hours, concurrent checks must send only once")
+
+	other := newMonitor(t, server.URL, true)
+	other.VerifyTLS, other.Name = false, ""
+	service.RunCheck(other)
+	require.Len(t, messages(), 3, "each monitor has its own cooldown")
+	assert.Contains(t, messages()[2], "Certificate Expiring - **"+other.Target+"**")
+
+	daysLeft = -1
+	_, err = testDB.UpdateRule(rule.ID, database.NotificationRuleInput{ThresholdValue: &daysLeft})
+	require.NoError(t, err)
+	expired := time.Now().Add(-time.Hour)
+	NewService(testDB, notifier).sendCertNotification(monitor, Check{Success: true, CertExpiry: &expired})
+	require.Len(t, messages(), 4)
+	assert.Contains(t, messages()[3], "Expires in -1 days", "expired days must floor, not truncate toward zero")
 }

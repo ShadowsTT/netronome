@@ -13,6 +13,24 @@ import (
 	"github.com/autobrr/netronome/internal/types"
 )
 
+func TestUptimeCertExpiringEvent(t *testing.T) {
+	RunTestWithBothDatabases(t, func(t *testing.T, td *TestDatabase) {
+		events, err := td.Service.GetEvents()
+		require.NoError(t, err)
+		count := 0
+		for _, event := range events {
+			if event.Category == NotificationCategoryUptime && event.EventType == "cert_expiring" {
+				count++
+				assert.Equal(t, "Certificate Expiring", event.Name)
+				assert.True(t, event.SupportsThreshold)
+				require.NotNil(t, event.ThresholdUnit)
+				assert.Equal(t, "days", *event.ThresholdUnit)
+			}
+		}
+		assert.Equal(t, 1, count, "migration must seed exactly one uptime/cert_expiring event")
+	})
+}
+
 func TestUptimeMonitor_CRUD(t *testing.T) {
 	RunTestWithBothDatabases(t, func(t *testing.T, td *TestDatabase) {
 		created, err := td.Service.CreateUptimeMonitor(&types.UptimeMonitor{

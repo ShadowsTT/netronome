@@ -95,8 +95,9 @@ const (
 	NotificationEventDNSRecovered = "monitor_recovered"
 
 	// Uptime monitor events
-	NotificationEventUptimeDown      = "monitor_down"
-	NotificationEventUptimeRecovered = "monitor_recovered"
+	NotificationEventUptimeDown         = "monitor_down"
+	NotificationEventUptimeRecovered    = "monitor_recovered"
+	NotificationEventUptimeCertExpiring = "cert_expiring"
 
 	// Agent events
 	NotificationEventAgentOffline       = "offline"

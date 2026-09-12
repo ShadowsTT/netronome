@@ -347,6 +347,12 @@ func (n *Notifier) SendUptimeNotification(monitorName string, target string, det
 	return n.SendNotification(database.NotificationCategoryUptime, database.NotificationEventUptimeRecovered, message, nil)
 }
 
+// SendUptimeCertNotification sends an uptime monitor certificate expiry notification.
+func (n *Notifier) SendUptimeCertNotification(monitorName, target string, daysLeft float64) error {
+	message := fmt.Sprintf("[!] Certificate Expiring - **%s** | Target: **%s** | Expires in %.0f days", monitorName, target, daysLeft)
+	return n.SendNotification(database.NotificationCategoryUptime, database.NotificationEventUptimeCertExpiring, message, &daysLeft)
+}
+
 // SendAgentNotification sends an agent-related notification
 // For temperature notifications, agentName can include sensor info in format "agent|sensor"
 func (n *Notifier) SendAgentNotification(agentName string, eventType string, value *float64) error {
