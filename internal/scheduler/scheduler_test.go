@@ -4,122 +4,148 @@
 package scheduler
 
 import (
+	"context"
+	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
+func TestSchedulerCancel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		s.Start(ctx)
+		synctest.Wait()
+
+		cancel()
+		synctest.Wait()
+		if s.running {
+			t.Fatal("scheduler is still running after context cancellation")
+		}
+		s.Stop()
+	})
+}
+
+func TestSchedulerRestartOwnerStop(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		s.Start(context.Background())
+		synctest.Wait()
+
+		s.Stop()
+		synctest.Wait()
+		if s.running {
+			t.Fatal("scheduler is still running after owner Stop")
+		}
+	})
+}
+
+func TestSchedulerRestart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		for range 2 {
+			s.Start(context.Background())
+			synctest.Wait()
+			if !s.running {
+				t.Fatal("scheduler is not running after Start")
+			}
+
+			s.Stop()
+			synctest.Wait()
+			if s.running {
+				t.Fatal("scheduler is still running after Stop")
+			}
+		}
+	})
+}
+
 func TestCalculateNextRun(t *testing.T) {
-	s := &service{}
-	
+	from := time.Date(2026, time.January, 31, 14, 0, 0, 0, time.FixedZone("UTC+2", 2*60*60))
 	tests := []struct {
-		name     string
 		interval string
-		from     time.Time
-		wantMin  time.Duration // minimum expected duration
-		wantMax  time.Duration // maximum expected duration (accounting for jitter)
+		want     time.Duration
+		invalid  bool
 	}{
-		{
-			name:     "1 hour interval",
-			interval: "1h",
-			from:     time.Now(),
-			wantMin:  1 * time.Hour,
-			wantMax:  1*time.Hour + 5*time.Minute, // 1h + up to 5m jitter
-		},
-		{
-			name:     "1 minute interval",
-			interval: "1m",
-			from:     time.Now(),
-			wantMin:  1 * time.Minute,
-			wantMax:  1*time.Minute + 5*time.Minute, // 1m + up to 5m jitter
-		},
-		{
-			name:     "60 seconds interval",
-			interval: "60s",
-			from:     time.Now(),
-			wantMin:  60 * time.Second,
-			wantMax:  60*time.Second + 5*time.Minute, // 60s + up to 5m jitter
-		},
-		{
-			name:     "3600 seconds interval",
-			interval: "3600s",
-			from:     time.Now(),
-			wantMin:  3600 * time.Second,
-			wantMax:  3600*time.Second + 5*time.Minute, // 3600s + up to 5m jitter
-		},
+		{interval: "1h", want: time.Hour},
+		{interval: "1m", want: time.Minute},
+		{interval: "60s", want: time.Minute},
+		{interval: "3600s", want: time.Hour},
+		{interval: "2d", want: 48 * time.Hour},
+		{interval: "1w", want: 7 * 24 * time.Hour},
+		{interval: "exact:13:00", want: time.Hour},
+		{interval: "exact:12:00", want: 24 * time.Hour},
+		{interval: "exact:00:00", want: 12 * time.Hour},
+		{interval: "exact:20:00, 13:00,09:00,15:00", want: time.Hour},
+		{interval: "exact:bad,24:00,xx:00,12:60,12:xx,13:00", want: time.Hour},
+		{interval: "exact:", invalid: true},
+		{interval: "exact:bad", invalid: true},
+		{interval: "exact:-1:00", invalid: true},
+		{interval: "exact:24:00", invalid: true},
+		{interval: "exact:12:-1", invalid: true},
+		{interval: "exact:12:60", invalid: true},
+		{interval: "invalid", invalid: true},
+		{interval: "", invalid: true},
 	}
-	
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := s.calculateNextRun(tt.interval, tt.from, false)
-			if got.IsZero() {
-				t.Errorf("calculateNextRun() returned zero time")
+		t.Run(tt.interval, func(t *testing.T) {
+			s := New(nil, nil, nil, nil, nil, nil)
+			precise := s.(*service).calculateNextRun(tt.interval, from, true)
+			jittered := s.CalculateNextRun(tt.interval, from)
+			if tt.invalid {
+				if !precise.IsZero() || !jittered.IsZero() {
+					t.Fatalf("invalid interval: precise = %v, jittered = %v", precise, jittered)
+				}
 				return
 			}
-			
-			duration := got.Sub(tt.from)
-			if duration < tt.wantMin {
-				t.Errorf("calculateNextRun() duration = %v, want at least %v", duration, tt.wantMin)
+			want := from.UTC().Add(tt.want)
+			if !precise.Equal(want) || precise.Location() != time.UTC {
+				t.Errorf("precise = %v, want %v in UTC", precise, want)
 			}
-			if duration > tt.wantMax {
-				t.Errorf("calculateNextRun() duration = %v, want at most %v", duration, tt.wantMax)
+			maxJitter := 5 * time.Minute
+			if strings.HasPrefix(tt.interval, "exact:") {
+				maxJitter = time.Minute
 			}
-			
-			// Log the actual values for debugging
-			t.Logf("Interval: %s, Duration: %v, NextRun: %v", tt.interval, duration, got)
+			if jitter := jittered.Sub(want); jitter < time.Second || jitter > maxJitter || jittered.Location() != time.UTC {
+				t.Errorf("jittered = %v, want %v + [1s, %v] in UTC", jittered, want, maxJitter)
+			}
 		})
 	}
 }
 
 func TestIsValidScheduleInterval(t *testing.T) {
-	s := &service{}
-	
 	tests := []struct {
-		name     string
 		interval string
 		want     bool
 	}{
-		{
-			name:     "valid duration - 1h",
-			interval: "1h",
-			want:     true,
-		},
-		{
-			name:     "valid duration - 60s",
-			interval: "60s",
-			want:     true,
-		},
-		{
-			name:     "valid duration - 1m",
-			interval: "1m",
-			want:     true,
-		},
-		{
-			name:     "valid exact time",
-			interval: "exact:14:00",
-			want:     true,
-		},
-		{
-			name:     "valid exact multiple times",
-			interval: "exact:09:00,14:00,20:00",
-			want:     true,
-		},
-		{
-			name:     "invalid format",
-			interval: "invalid",
-			want:     false,
-		},
-		{
-			name:     "empty string",
-			interval: "",
-			want:     false,
-		},
+		{"1h", true}, {"60s", true}, {"1m", true}, {"2d", true}, {"1w", true},
+		{"exact:14:00", true}, {"exact:00:00, 09:00,23:59", true},
+		{"invalid", false}, {"", false}, {"exact:", false},
+		{"exact:12", false}, {"exact:12:00:00", false},
+		{"exact:xx:00", false}, {"exact:-1:00", false}, {"exact:24:00", false},
+		{"exact:12:xx", false}, {"exact:12:-1", false}, {"exact:12:60", false},
+		{"exact:12:00,", false}, {"exact:12:00,invalid", false},
 	}
-	
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := s.isValidScheduleInterval(tt.interval)
-			if got != tt.want {
-				t.Errorf("isValidScheduleInterval() = %v, want %v", got, tt.want)
+		t.Run(tt.interval, func(t *testing.T) {
+			if got := (&service{}).isValidScheduleInterval(tt.interval); got != tt.want {
+				t.Errorf("isValidScheduleInterval(%q) = %v, want %v", tt.interval, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeDuration(t *testing.T) {
+	tests := []struct{ interval, want string }{
+		{"1d", "24h"}, {"2w", "336h"}, {"-1d", "-24h"}, {"0w", "0h"},
+		{"d", "d"}, {"w", "w"}, {"xd", "xd"}, {"xw", "xw"},
+		{"1.5d", "1.5d"}, {"1.5w", "1.5w"}, {"1h30m", "1h30m"}, {"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.interval, func(t *testing.T) {
+			if got := (&service{}).normalizeDuration(tt.interval); got != tt.want {
+				t.Errorf("normalizeDuration(%q) = %q, want %q", tt.interval, got, tt.want)
 			}
 		})
 	}

@@ -4,6 +4,7 @@
 package scheduler
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -17,25 +18,72 @@ type monitorCheckFunc[T any] func(*T)
 
 func (f monitorCheckFunc[T]) RunCheck(monitor *T) { f(monitor) }
 
-// Always return a due monitor so every pass exercises the dispatch guard.
+// Unless overridden, return due DNS and uptime monitors to exercise dispatch guards.
 type inFlightDB struct {
 	database.Service
-	nextRun time.Time
+	nextRun                     time.Time
+	getSchedules                func(context.Context) ([]types.Schedule, error)
+	updateSchedule              func(context.Context, types.Schedule) error
+	getPacketLossMonitors       func() ([]*types.PacketLossMonitor, error)
+	getPacketLossMonitor        func(int64) (*types.PacketLossMonitor, error)
+	updatePacketLossMonitor     func(*types.PacketLossMonitor) error
+	getDNSMonitors              func() ([]*types.DNSMonitor, error)
+	getUptimeMonitors           func() ([]*types.UptimeMonitor, error)
+	updateDNSMonitorSchedule    func(int64, *time.Time, time.Time) error
+	updateUptimeMonitorSchedule func(int64, *time.Time, time.Time) error
+}
+
+func (db *inFlightDB) GetSchedules(ctx context.Context) ([]types.Schedule, error) {
+	if db.getSchedules != nil {
+		return db.getSchedules(ctx)
+	}
+	return nil, nil
+}
+
+func (db *inFlightDB) UpdateSchedule(ctx context.Context, schedule types.Schedule) error {
+	return db.updateSchedule(ctx, schedule)
+}
+
+func (db *inFlightDB) GetPacketLossMonitors() ([]*types.PacketLossMonitor, error) {
+	if db.getPacketLossMonitors != nil {
+		return db.getPacketLossMonitors()
+	}
+	return nil, nil
+}
+
+func (db *inFlightDB) GetPacketLossMonitor(id int64) (*types.PacketLossMonitor, error) {
+	return db.getPacketLossMonitor(id)
+}
+
+func (db *inFlightDB) UpdatePacketLossMonitor(monitor *types.PacketLossMonitor) error {
+	return db.updatePacketLossMonitor(monitor)
 }
 
 func (db *inFlightDB) GetDNSMonitors() ([]*types.DNSMonitor, error) {
+	if db.getDNSMonitors != nil {
+		return db.getDNSMonitors()
+	}
 	return []*types.DNSMonitor{{ID: 1, Enabled: true, Interval: "1m", NextRun: &db.nextRun}}, nil
 }
 
 func (db *inFlightDB) GetUptimeMonitors() ([]*types.UptimeMonitor, error) {
+	if db.getUptimeMonitors != nil {
+		return db.getUptimeMonitors()
+	}
 	return []*types.UptimeMonitor{{ID: 1, Enabled: true, Interval: "1m", NextRun: &db.nextRun}}, nil
 }
 
-func (*inFlightDB) UpdateDNSMonitorSchedule(int64, *time.Time, time.Time) error {
+func (db *inFlightDB) UpdateDNSMonitorSchedule(id int64, last *time.Time, next time.Time) error {
+	if db.updateDNSMonitorSchedule != nil {
+		return db.updateDNSMonitorSchedule(id, last, next)
+	}
 	return nil
 }
 
-func (*inFlightDB) UpdateUptimeMonitorSchedule(int64, *time.Time, time.Time) error {
+func (db *inFlightDB) UpdateUptimeMonitorSchedule(id int64, last *time.Time, next time.Time) error {
+	if db.updateUptimeMonitorSchedule != nil {
+		return db.updateUptimeMonitorSchedule(id, last, next)
+	}
 	return nil
 }
 
