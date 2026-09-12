@@ -4,10 +4,62 @@
 package scheduler
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
+
+func TestSchedulerCancel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		s.Start(ctx)
+		synctest.Wait()
+
+		cancel()
+		synctest.Wait()
+		if s.running {
+			t.Fatal("scheduler is still running after context cancellation")
+		}
+		s.Stop()
+	})
+}
+
+func TestSchedulerRestartOwnerStop(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		s.Start(context.Background())
+		synctest.Wait()
+
+		s.Stop()
+		synctest.Wait()
+		if s.running {
+			t.Fatal("scheduler is still running after owner Stop")
+		}
+	})
+}
+
+func TestSchedulerRestart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := New(&inFlightDB{}, nil, nil, nil, nil, nil).(*service)
+		for range 2 {
+			s.Start(context.Background())
+			synctest.Wait()
+			if !s.running {
+				t.Fatal("scheduler is not running after Start")
+			}
+
+			s.Stop()
+			synctest.Wait()
+			if s.running {
+				t.Fatal("scheduler is still running after Stop")
+			}
+		}
+	})
+}
 
 func TestCalculateNextRun(t *testing.T) {
 	from := time.Date(2026, time.January, 31, 14, 0, 0, 0, time.FixedZone("UTC+2", 2*60*60))

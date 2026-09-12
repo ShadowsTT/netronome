@@ -37,7 +37,7 @@ type service struct {
 	uptime     interface{ RunCheck(*types.UptimeMonitor) }
 	notifier   *notifications.Notifier
 	ticker     *time.Ticker
-	done       chan bool
+	done       chan struct{}
 	mu         sync.Mutex
 	running    bool
 	inFlight   sync.Map
@@ -49,7 +49,6 @@ func New(db database.Service, speedtest speedtest.Service, packetLoss *speedtest
 		speedtest:  speedtest,
 		packetLoss: packetLoss,
 		notifier:   notifier,
-		done:       make(chan bool),
 	}
 	if dns != nil {
 		s.dns = dns
@@ -67,6 +66,8 @@ func (s *service) Start(ctx context.Context) {
 		return
 	}
 	s.running = true
+	s.done = make(chan struct{})
+	done := s.done
 	s.mu.Unlock()
 
 	s.ticker = time.NewTicker(1 * time.Minute)
@@ -83,7 +84,7 @@ func (s *service) Start(ctx context.Context) {
 			case <-ctx.Done():
 				s.Stop()
 				return
-			case <-s.done:
+			case <-done:
 				return
 			case <-s.ticker.C:
 				s.checkAndRunScheduledTests(ctx)
@@ -166,7 +167,7 @@ func (s *service) Stop() {
 	if s.ticker != nil {
 		s.ticker.Stop()
 	}
-	s.done <- true
+	close(s.done)
 	s.running = false
 	log.Info().Msg("Scheduler service stopped")
 }
